@@ -260,7 +260,18 @@ func generate(release *github.RepositoryRelease, output string, cnOutput string,
 }
 
 func setActionOutput(name string, content string) {
-	os.Stdout.WriteString("::set-output name=" + name + "::" + content + "\n")
+	outputPath := os.Getenv("GITHUB_OUTPUT")
+	if outputPath == "" {
+		os.Stdout.WriteString("::set-output name=" + name + "::" + content + "\n")
+		return
+	}
+	outputFile, err := os.OpenFile(outputPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		os.Stdout.WriteString("::set-output name=" + name + "::" + content + "\n")
+		return
+	}
+	defer outputFile.Close()
+	outputFile.WriteString(name + "=" + content + "\n")
 }
 
 func release(source string, destination string, output string, cnOutput string, ruleSetOutput string) error {
@@ -268,11 +279,11 @@ func release(source string, destination string, output string, cnOutput string, 
 	if err != nil {
 		return err
 	}
-	destinationRelease, err := fetch(destination)
-	if err != nil {
-		log.Warn("missing destination latest release")
-	} else {
-		if os.Getenv("NO_SKIP") != "true" && strings.Contains(*destinationRelease.Name, *sourceRelease.Name) {
+	if os.Getenv("NO_SKIP") != "true" {
+		destinationRelease, err := fetch(destination)
+		if err != nil {
+			log.Warn("missing destination latest release")
+		} else if strings.Contains(*destinationRelease.Name, *sourceRelease.Name) {
 			log.Info("already latest")
 			setActionOutput("skip", "true")
 			return nil
